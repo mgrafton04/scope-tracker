@@ -633,7 +633,7 @@ export default function App(){
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
-            <img src="/Wright_Brothers_Logo.png" alt="Wright Brothers" style={{height:64,objectFit:"contain",filter:"brightness(1.1)"}}/>
+            <img src="Wright Brothers Logo.png" alt="Wright Brothers" style={{height:64,objectFit:"contain",filter:"brightness(1.1)"}}/>
             <div>
               <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
                 <BarChart3 size={12} color="#4a7c8e"/>
