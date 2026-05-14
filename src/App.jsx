@@ -1,5 +1,20 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
-import { Upload, AlertTriangle, CheckCircle2, Download, BarChart3, TrendingUp, FileText, Layers, Link2, ZoomOut, Info, Lock, Activity, RefreshCw, Circle } from "lucide-react";
+// No lucide-react needed — using inline icon components
+const Upload=()=><span>↑</span>;
+const AlertTriangle=({size,color,style})=><span style={{color,...(style||{})}}>⚠</span>;
+const CheckCircle2=({size,color,style})=><span style={{color,...(style||{})}}>✓</span>;
+const Download=()=><span>↓</span>;
+const BarChart3=({size,color})=><span style={{color}}>📊</span>;
+const TrendingUp=({size})=><span>📈</span>;
+const FileText=({size,color})=><span style={{color}}>📄</span>;
+const Layers=({size,color})=><span style={{color}}>📋</span>;
+const Link2=({size,color})=><span style={{color}}>🔗</span>;
+const ZoomOut=({size})=><span>🔍</span>;
+const Info=({size,color})=><span style={{color}}>ℹ</span>;
+const Lock=({size})=><span>🔒</span>;
+const Activity=({size})=><span>📉</span>;
+const RefreshCw=({size})=><span>↻</span>;
+const Circle=({size,fill,stroke})=><span style={{color:fill,fontSize:size}}>●</span>;
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceArea, LineChart, Line, ReferenceLine, Legend } from "recharts";
 import * as XLSX from "xlsx";
 
@@ -38,7 +53,7 @@ function parseSOV(arrayBuffer){
   const lineItems=[];let gcgrTotal=0,ohpTotal=0;
   raw.forEach(row=>{
     let desc="",val=0;
-    row.forEach(cell=>{const s=String(cell||"").trim();const n=toMoney(s);if(!desc&&s.length>1&&isNaN(Number(s.replace(/[$,]/g,""))))desc=s;if(!val&&n>0&&s!==desc)val=n;});
+    row.forEach(cell=>{const s=String(cell||"").trim();const n=toMoney(s);if(!desc&&s.length>1&&isNaN(Number(s.replace(/[$,]/g,""))))desc=s;if(!val&&n>=100&&s!==desc)val=n;});
     if(!desc&&!val)return;
     const kind=classifyRow(desc,val);
     if(kind==="skip"||kind==="subtotal")return;
