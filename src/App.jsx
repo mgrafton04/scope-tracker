@@ -556,6 +556,9 @@ export default function App(){
   const [mLeft,setMLeft]=useState(0);
   const [mRight,setMRight]=useState(null);
   const [mSel,setMSel]=useState(null);
+  const [c1Left,setC1Left]=useState(0);
+  const [c1Right,setC1Right]=useState(null);
+  const [c1Sel,setC1Sel]=useState(null);
 
   const workTasks=useMemo(()=>rawTasks.filter(t=>!t.isSummary),[rawTasks]);
   const sovItems=sovResult?.items||[];
@@ -802,41 +805,60 @@ export default function App(){
             {hasData&&(
               <>
                 {/* ── Chart 1: Combined — individual scopes + total ── */}
-                <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20}}>
-                  <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 2px",color:"#f1f5f9"}}>① Combined — Scope Curves + Project Total</h2>
-                  <p style={{color:"#475569",fontSize:12,marginBottom:14}}>Each scope's bell curve across its own schedule dates · white line = project monthly total</p>
-                  <div style={{height:460}}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={monthlyData} margin={{top:16,right:20,left:8,bottom:8}}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
-                        <XAxis dataKey="month" tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} minTickGap={10}/>
-                        <YAxis tickFormatter={v=>`$${Math.round(v/1000)}k`} tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} width={58}/>
-                        <Tooltip content={({active,payload,label})=>{
-                          if(!active||!payload?.length)return null;
-                          const items=payload.filter(p=>p.value>0&&p.name!=="▸ Project Total").sort((a,b)=>b.value-a.value);
-                          const totalVal=monthlyData.find(d=>d.month===label)?.total||0;
-                          return(<div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,padding:"10px 13px",fontSize:12,maxWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
-                            <div style={{color:"#64748b",marginBottom:5,fontFamily:"monospace",fontSize:10}}>{label}</div>
-                            {items.slice(0,10).map(p=>(<div key={p.name} style={{display:"flex",gap:7,alignItems:"center",marginBottom:2}}><span style={{width:7,height:7,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/><span style={{color:"#94a3b8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{p.name}:</span><span style={{fontWeight:600,flexShrink:0}}>{currency(p.value)}</span></div>))}
-                            <div style={{borderTop:"1px solid #334155",marginTop:7,paddingTop:7,display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"#fff",fontWeight:700}}>Monthly Total:</span><span style={{color:"#fff",fontWeight:800,fontSize:14}}>{currency(totalVal)}</span></div>
-                          </div>);
-                        }}/>
-                        <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
-                        {sovKeys.map((sid,i)=>{
-                          const s=byScope[sid];const col=PAL[i%PAL.length];const key=s.sov.description.slice(0,18);
-                          const scopeStart=`${s.startDate.getFullYear()}-${String(s.startDate.getMonth()+1).padStart(2,"0")}`;
-                          const scopeEnd=`${s.finishDate.getFullYear()}-${String(s.finishDate.getMonth()+1).padStart(2,"0")}`;
-                          const padStart2=new Date(s.startDate.getFullYear(),s.startDate.getMonth()-1,1);
-                          const padEnd2=new Date(s.finishDate.getFullYear(),s.finishDate.getMonth()+2,0);
-                          const ps2=`${padStart2.getFullYear()}-${String(padStart2.getMonth()+1).padStart(2,"0")}`;
-                          const pe2=`${padEnd2.getFullYear()}-${String(padEnd2.getMonth()+1).padStart(2,"0")}`;
-                          return(<Line key={sid} type="monotone" dataKey={d=>d.month>=ps2&&d.month<=pe2?(d[key]||0):null} stroke={col} strokeWidth={2} dot={false} name={key} connectNulls={false} activeDot={{r:4,fill:col,strokeWidth:0}}/>);
-                        })}
-                        <Line type="monotone" dataKey="total" stroke="#ffffff" strokeWidth={3} dot={{fill:"#ffffff",r:3,strokeWidth:0}} activeDot={{r:6,fill:"#ffffff",stroke:"#3b82f6",strokeWidth:2}} name="▸ Project Total" strokeOpacity={1} legendType="line"/>
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                {(()=>{
+                  const c1Sliced=c1Right!==null?monthlyData.slice(c1Left,c1Right+1):monthlyData;
+                  const c1Zoomed=c1Left>0||c1Right!==null;
+                  return(
+                    <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                        <div>
+                          <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 2px",color:"#f1f5f9"}}>① Combined — Scope Curves + Project Total</h2>
+                          <p style={{color:"#475569",fontSize:12,margin:0}}>Each scope's bell curve across its own schedule dates · white line = project monthly total</p>
+                        </div>
+                        {c1Zoomed?<button onClick={()=>{setC1Left(0);setC1Right(null);}} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 9px",background:"#1e293b",border:"1px solid #334155",borderRadius:6,color:"#94a3b8",cursor:"pointer",fontSize:11}}><ZoomOut size={10}/> Reset zoom</button>:<span style={{fontSize:11,color:"#334155"}}>Drag to zoom</span>}
+                      </div>
+                      <div style={{height:460,cursor:"crosshair"}}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={c1Sliced} margin={{top:16,right:20,left:8,bottom:8}}
+                            onMouseDown={e=>{if(e?.activeLabel)setC1Sel({start:e.activeLabel,end:null,active:true});}}
+                            onMouseMove={e=>{if(c1Sel?.active&&e?.activeLabel)setC1Sel(s=>({...s,end:e.activeLabel}));}}
+                            onMouseUp={()=>{
+                              if(c1Sel?.active&&c1Sel.start&&c1Sel.end&&c1Sel.start!==c1Sel.end){
+                                const a=monthlyData.findIndex(d=>d.month===c1Sel.start),b=monthlyData.findIndex(d=>d.month===c1Sel.end);
+                                if(a>=0&&b>=0){setC1Left(Math.min(a,b));setC1Right(Math.max(a,b));}
+                              }
+                              setC1Sel(null);
+                            }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
+                            <XAxis dataKey="month" tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} minTickGap={10}/>
+                            <YAxis tickFormatter={v=>`$${Math.round(v/1000)}k`} tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} width={58}/>
+                            <Tooltip content={({active,payload,label})=>{
+                              if(!active||!payload?.length)return null;
+                              const items=payload.filter(p=>p.value>0&&p.name!=="▸ Project Total").sort((a,b)=>b.value-a.value);
+                              const totalVal=monthlyData.find(d=>d.month===label)?.total||0;
+                              return(<div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,padding:"10px 13px",fontSize:12,maxWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                                <div style={{color:"#64748b",marginBottom:5,fontFamily:"monospace",fontSize:10}}>{label}</div>
+                                {items.slice(0,10).map(p=>(<div key={p.name} style={{display:"flex",gap:7,alignItems:"center",marginBottom:2}}><span style={{width:7,height:7,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/><span style={{color:"#94a3b8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{p.name}:</span><span style={{fontWeight:600,flexShrink:0}}>{currency(p.value)}</span></div>))}
+                                <div style={{borderTop:"1px solid #334155",marginTop:7,paddingTop:7,display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"#fff",fontWeight:700}}>Monthly Total:</span><span style={{color:"#fff",fontWeight:800,fontSize:14}}>{currency(totalVal)}</span></div>
+                              </div>);
+                            }}/>
+                            <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
+                            {sovKeys.map((sid,i)=>{
+                              const s=byScope[sid];const col=PAL[i%PAL.length];const key=s.sov.description.slice(0,18);
+                              const padStart2=new Date(s.startDate.getFullYear(),s.startDate.getMonth()-1,1);
+                              const padEnd2=new Date(s.finishDate.getFullYear(),s.finishDate.getMonth()+2,0);
+                              const ps2=`${padStart2.getFullYear()}-${String(padStart2.getMonth()+1).padStart(2,"0")}`;
+                              const pe2=`${padEnd2.getFullYear()}-${String(padEnd2.getMonth()+1).padStart(2,"0")}`;
+                              return(<Line key={sid} type="monotone" dataKey={d=>d.month>=ps2&&d.month<=pe2?(d[key]||0):null} stroke={col} strokeWidth={2} dot={false} name={key} connectNulls={false} activeDot={{r:4,fill:col,strokeWidth:0}}/>);
+                            })}
+                            <Line type="monotone" dataKey="total" stroke="#ffffff" strokeWidth={3} dot={{fill:"#ffffff",r:3,strokeWidth:0}} activeDot={{r:6,fill:"#ffffff",stroke:"#3b82f6",strokeWidth:2}} name="▸ Project Total" strokeOpacity={1} legendType="line"/>
+                            {c1Sel?.active&&c1Sel.start&&c1Sel.end&&<ReferenceArea x1={c1Sel.start} x2={c1Sel.end} fill="#3b82f6" fillOpacity={0.08}/>}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* ── Chart 2: Project Total only ── */}
                 <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20}}>
