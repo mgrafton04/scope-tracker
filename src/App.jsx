@@ -161,16 +161,35 @@ function buildCurves(tasks,sovItems,linksMap){
 // ─── Build monthly aggregated data ───────────────────────────────────────────
 function buildMonthlyData(byScope,sovKeys){
   if(!sovKeys.length)return[];
+  // Build global month spine covering ALL scopes full duration
+  let globalMin=null,globalMax=null;
+  sovKeys.forEach(sid=>{
+    const{startDate,finishDate}=byScope[sid];
+    if(!globalMin||startDate<globalMin)globalMin=startDate;
+    if(!globalMax||finishDate>globalMax)globalMax=finishDate;
+  });
+  if(!globalMin||!globalMax)return[];
+  // Generate every month from globalMin to globalMax
   const monthMap=new Map();
+  const start=new Date(globalMin.getFullYear(),globalMin.getMonth(),1);
+  const end=new Date(globalMax.getFullYear(),globalMax.getMonth(),1);
+  for(let d=new Date(start);d<=end;d.setMonth(d.getMonth()+1)){
+    const k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    monthMap.set(k,{month:k,total:0});
+  }
+  // Accumulate each scope's daily values into the correct month bucket
   sovKeys.forEach(sid=>{
     const{sov,full}=byScope[sid];
     const key=sov.description.slice(0,18);
+    // Ensure every month exists for this scope (0 if not active)
+    monthMap.forEach((row)=>{row[key]=row[key]||0;});
     full.forEach(p=>{
       const monthKey=p.date.slice(0,7);
-      if(!monthMap.has(monthKey))monthMap.set(monthKey,{month:monthKey,total:0});
-      const row=monthMap.get(monthKey);
-      row[key]=(row[key]||0)+p.daily;
-      row.total+=p.daily;
+      if(monthMap.has(monthKey)){
+        const row=monthMap.get(monthKey);
+        row[key]=(row[key]||0)+p.daily;
+        row.total+=p.daily;
+      }
     });
   });
   const sorted=Array.from(monthMap.values()).sort((a,b)=>a.month.localeCompare(b.month));
@@ -534,6 +553,9 @@ export default function App(){
   const [scopeSels,setScopeSels]=useState({});
   const [baselineLocked,setBaselineLocked]=useState(false);
   const [progressUpdates,setProgressUpdates]=useState({}); // sovId -> {percentComplete, asOfDate}
+  const [mLeft,setMLeft]=useState(0);
+  const [mRight,setMRight]=useState(null);
+  const [mSel,setMSel]=useState(null);
 
   const workTasks=useMemo(()=>rawTasks.filter(t=>!t.isSummary),[rawTasks]);
   const sovItems=sovResult?.items||[];
@@ -779,59 +801,131 @@ export default function App(){
             {!hasData&&<Empty msg="Upload both files and link tasks to generate monthly projections."/>}
             {hasData&&(
               <>
-                {/* Combined monthly bell curve — scopes stacked + total line */}
+                {/* ── Chart 1: Combined — individual scopes + total ── */}
                 <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,flexWrap:"wrap",gap:8}}>
-                    <div>
-                      <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 2px",color:"#f1f5f9"}}>Monthly Bell Curves — All Scopes</h2>
-                      <p style={{color:"#475569",fontSize:12,margin:0}}>Stacked scope spend by month · white line = project monthly total</p>
-                    </div>
-                  </div>
-                  <div style={{height:520}}>
+                  <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 2px",color:"#f1f5f9"}}>① Combined — Scope Curves + Project Total</h2>
+                  <p style={{color:"#475569",fontSize:12,marginBottom:14}}>Each scope's bell curve across its own schedule dates · white line = project monthly total</p>
+                  <div style={{height:460}}>
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={monthlyData} margin={{top:20,right:20,left:8,bottom:8}}>
+                      <ComposedChart data={monthlyData} margin={{top:16,right:20,left:8,bottom:8}}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
+                        <XAxis dataKey="month" tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} minTickGap={10}/>
+                        <YAxis tickFormatter={v=>`$${Math.round(v/1000)}k`} tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} width={58}/>
+                        <Tooltip content={({active,payload,label})=>{
+                          if(!active||!payload?.length)return null;
+                          const items=payload.filter(p=>p.value>0&&p.name!=="▸ Project Total").sort((a,b)=>b.value-a.value);
+                          const totalVal=monthlyData.find(d=>d.month===label)?.total||0;
+                          return(<div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,padding:"10px 13px",fontSize:12,maxWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                            <div style={{color:"#64748b",marginBottom:5,fontFamily:"monospace",fontSize:10}}>{label}</div>
+                            {items.slice(0,10).map(p=>(<div key={p.name} style={{display:"flex",gap:7,alignItems:"center",marginBottom:2}}><span style={{width:7,height:7,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/><span style={{color:"#94a3b8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{p.name}:</span><span style={{fontWeight:600,flexShrink:0}}>{currency(p.value)}</span></div>))}
+                            <div style={{borderTop:"1px solid #334155",marginTop:7,paddingTop:7,display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"#fff",fontWeight:700}}>Monthly Total:</span><span style={{color:"#fff",fontWeight:800,fontSize:14}}>{currency(totalVal)}</span></div>
+                          </div>);
+                        }}/>
+                        <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
+                        {sovKeys.map((sid,i)=>{
+                          const s=byScope[sid];const col=PAL[i%PAL.length];const key=s.sov.description.slice(0,18);
+                          const scopeStart=`${s.startDate.getFullYear()}-${String(s.startDate.getMonth()+1).padStart(2,"0")}`;
+                          const scopeEnd=`${s.finishDate.getFullYear()}-${String(s.finishDate.getMonth()+1).padStart(2,"0")}`;
+                          const padStart2=new Date(s.startDate.getFullYear(),s.startDate.getMonth()-1,1);
+                          const padEnd2=new Date(s.finishDate.getFullYear(),s.finishDate.getMonth()+2,0);
+                          const ps2=`${padStart2.getFullYear()}-${String(padStart2.getMonth()+1).padStart(2,"0")}`;
+                          const pe2=`${padEnd2.getFullYear()}-${String(padEnd2.getMonth()+1).padStart(2,"0")}`;
+                          return(<Line key={sid} type="monotone" dataKey={d=>d.month>=ps2&&d.month<=pe2?(d[key]||0):null} stroke={col} strokeWidth={2} dot={false} name={key} connectNulls={false} activeDot={{r:4,fill:col,strokeWidth:0}}/>);
+                        })}
+                        <Line type="monotone" dataKey="total" stroke="#ffffff" strokeWidth={3} dot={{fill:"#ffffff",r:3,strokeWidth:0}} activeDot={{r:6,fill:"#ffffff",stroke:"#3b82f6",strokeWidth:2}} name="▸ Project Total" strokeOpacity={1} legendType="line"/>
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* ── Chart 2: Project Total only ── */}
+                <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20}}>
+                  <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 2px",color:"#f1f5f9"}}>② Project Total Bell Curve — Monthly</h2>
+                  <p style={{color:"#475569",fontSize:12,marginBottom:14}}>Overarching project spend across all scopes combined, by month</p>
+                  <div style={{height:320}}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={monthlyData} margin={{top:16,right:20,left:8,bottom:8}}>
                         <defs>
-                          {sovKeys.map((sid,i)=>(
-                            <linearGradient key={sid} id={`mg${i}`} x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={PAL[i%PAL.length]} stopOpacity={0.6}/>
-                              <stop offset="95%" stopColor={PAL[i%PAL.length]} stopOpacity={0.05}/>
-                            </linearGradient>
-                          ))}
+                          <linearGradient id="totMonthGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ffffff" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#ffffff" stopOpacity={0.02}/>
+                          </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
                         <XAxis dataKey="month" tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} minTickGap={10}/>
                         <YAxis tickFormatter={v=>`$${Math.round(v/1000)}k`} tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} width={58}/>
                         <Tooltip content={({active,payload,label})=>{
                           if(!active||!payload?.length)return null;
-                          const scopeItems=payload.filter(p=>p.dataKey!=="total"&&p.value>0);
                           const totalVal=monthlyData.find(d=>d.month===label)?.total||0;
-                          return(
-                            <div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,padding:"10px 13px",fontSize:12,maxWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
-                              <div style={{color:"#64748b",marginBottom:5,fontFamily:"monospace",fontSize:10}}>{label}</div>
-                              {scopeItems.slice(0,10).map(p=>(
-                                <div key={p.dataKey} style={{display:"flex",gap:7,alignItems:"center",marginBottom:2}}>
-                                  <span style={{width:7,height:7,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/>
-                                  <span style={{color:"#94a3b8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{p.dataKey}:</span>
-                                  <span style={{fontWeight:600,flexShrink:0}}>{currency(p.value)}</span>
-                                </div>
-                              ))}
-                              <div style={{borderTop:"1px solid #334155",marginTop:7,paddingTop:7,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                                <span style={{color:"#ffffff",fontWeight:700,fontSize:12}}>📅 Monthly Total:</span>
-                                <span style={{color:"#ffffff",fontWeight:800,fontSize:14}}>{currency(totalVal)}</span>
-                              </div>
-                            </div>
-                          );
+                          return(<div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,padding:"10px 13px",boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                            <div style={{color:"#64748b",marginBottom:5,fontFamily:"monospace",fontSize:10}}>{label}</div>
+                            <div style={{display:"flex",justifyContent:"space-between",gap:16}}><span style={{color:"#fff",fontWeight:700}}>Monthly Total:</span><span style={{color:"#fff",fontWeight:800,fontSize:14}}>{currency(totalVal)}</span></div>
+                          </div>);
                         }}/>
-                        <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
-                        {sovKeys.map((sid,i)=>{
-                          const s=byScope[sid];const col=PAL[i%PAL.length];const key=s.sov.description.slice(0,18);
-                          return(<Area key={sid} type="monotone" dataKey={key} stroke={col} strokeWidth={1.5} fill={`url(#mg${i})`} stackId="s" name={key}/>);
-                        })}
-                        <Line type="monotone" dataKey="total" stroke="#ffffff" strokeWidth={3} dot={{fill:"#ffffff",stroke:"#ffffff",r:4,strokeWidth:1}} activeDot={{r:6,fill:"#ffffff",stroke:"#3b82f6",strokeWidth:2}} name="▸ Monthly Total" strokeOpacity={1} legendType="line" zIndex={100}/>
-                      </ComposedChart>
+                        <Area type="monotone" dataKey="total" stroke="#ffffff" strokeWidth={3} fill="url(#totMonthGrad)" name="Project Total" dot={{fill:"#ffffff",r:4,strokeWidth:0}} activeDot={{r:6,fill:"#ffffff",stroke:"#3b82f6",strokeWidth:2}}/>
+                      </AreaChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
+
+                {/* ── Chart 3: Individual scopes only, zoomable ── */}
+                {(()=>{
+                  const sliced=mRight!==null?monthlyData.slice(mLeft,mRight+1):monthlyData;
+                  const isZoomed=mLeft>0||mRight!==null;
+                  return(
+                    <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                        <div>
+                          <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 2px",color:"#f1f5f9"}}>③ Individual Scope Curves — Zoomed</h2>
+                          <p style={{color:"#475569",fontSize:12,margin:0}}>Drag to zoom in on any time window</p>
+                        </div>
+                        {isZoomed&&<button onClick={()=>{setMLeft(0);setMRight(null);}} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 9px",background:"#1e293b",border:"1px solid #334155",borderRadius:6,color:"#94a3b8",cursor:"pointer",fontSize:11}}><ZoomOut size={10}/> Reset zoom</button>}
+                        {!isZoomed&&<span style={{fontSize:11,color:"#334155"}}>Drag to zoom</span>}
+                      </div>
+                      <div style={{height:480,cursor:"crosshair"}}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={sliced} margin={{top:16,right:20,left:8,bottom:8}}
+                            onMouseDown={e=>{if(e?.activeLabel)setMSel({start:e.activeLabel,end:null,active:true});}}
+                            onMouseMove={e=>{if(mSel?.active&&e?.activeLabel)setMSel(s=>({...s,end:e.activeLabel}));}}
+                            onMouseUp={()=>{
+                              if(mSel?.active&&mSel.start&&mSel.end&&mSel.start!==mSel.end){
+                                const a=monthlyData.findIndex(d=>d.month===mSel.start),b=monthlyData.findIndex(d=>d.month===mSel.end);
+                                if(a>=0&&b>=0){setMLeft(Math.min(a,b));setMRight(Math.max(a,b));}
+                              }
+                              setMSel(null);
+                            }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
+                            <XAxis dataKey="month" tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} minTickGap={8}/>
+                            <YAxis tickFormatter={v=>`$${Math.round(v/1000)}k`} tick={{fontSize:9,fill:"#475569",fontFamily:"monospace"}} width={58}/>
+                            <Tooltip content={({active,payload,label})=>{
+                              if(!active||!payload?.length)return null;
+                              const items=payload.filter(p=>p.value>0).sort((a,b)=>b.value-a.value);
+                              const totalVal=monthlyData.find(d=>d.month===label)?.total||0;
+                              return(<div style={{background:"#0f172a",border:"1px solid #1e293b",borderRadius:10,padding:"10px 13px",fontSize:12,maxWidth:300,boxShadow:"0 8px 32px rgba(0,0,0,.6)"}}>
+                                <div style={{color:"#64748b",marginBottom:5,fontFamily:"monospace",fontSize:10}}>{label}</div>
+                                {items.slice(0,10).map(p=>(<div key={p.name} style={{display:"flex",gap:7,alignItems:"center",marginBottom:2}}><span style={{width:7,height:7,borderRadius:"50%",background:p.color,flexShrink:0,display:"inline-block"}}/><span style={{color:"#94a3b8",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:11}}>{p.name}:</span><span style={{fontWeight:600,flexShrink:0}}>{currency(p.value)}</span></div>))}
+                                <div style={{borderTop:"1px solid #334155",marginTop:7,paddingTop:7,display:"flex",justifyContent:"space-between",gap:8}}><span style={{color:"#fff",fontWeight:700}}>Monthly Total:</span><span style={{color:"#fff",fontWeight:800,fontSize:14}}>{currency(totalVal)}</span></div>
+                              </div>);
+                            }}/>
+                            <Legend wrapperStyle={{fontSize:10,color:"#64748b"}}/>
+                            {sovKeys.map((sid,i)=>{
+                              const s=byScope[sid];const col=PAL[i%PAL.length];const key=s.sov.description.slice(0,18);
+                              const scopeStart=`${s.startDate.getFullYear()}-${String(s.startDate.getMonth()+1).padStart(2,"0")}`;
+                              const scopeEnd=`${s.finishDate.getFullYear()}-${String(s.finishDate.getMonth()+1).padStart(2,"0")}`;
+                              // Pad 1 month either side so short scopes get a curve not a dot
+                          const padStart=new Date(s.startDate.getFullYear(),s.startDate.getMonth()-1,1);
+                          const padEnd=new Date(s.finishDate.getFullYear(),s.finishDate.getMonth()+2,0);
+                          const psKey=`${padStart.getFullYear()}-${String(padStart.getMonth()+1).padStart(2,"0")}`;
+                          const peKey=`${padEnd.getFullYear()}-${String(padEnd.getMonth()+1).padStart(2,"0")}`;
+                          return(<Line key={sid} type="monotone" dataKey={d=>d.month>=psKey&&d.month<=peKey?(d[key]||0):null} stroke={col} strokeWidth={2.5} dot={false} name={key} connectNulls={false} activeDot={{r:5,fill:col,stroke:"#fff",strokeWidth:1}}/>);
+                            })}
+                            {mSel?.active&&mSel.start&&mSel.end&&<ReferenceArea x1={mSel.start} x2={mSel.end} fill="#3b82f6" fillOpacity={0.08}/>}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Monthly totals table */}
                 <div style={{background:"#0f172a",borderRadius:14,border:"1px solid #1e293b",padding:20,overflowX:"auto"}}>
