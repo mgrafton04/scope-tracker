@@ -210,14 +210,11 @@ function buildMonthlyData(byScope,sovKeys){
 }
 
 // ─── Monthly progress: compute earned value per scope per month ───────────────
-// monthlyProgress: { sovId: { "2025-05": 45, "2025-06": 70, ... } } (cumulative % per month)
 function buildActualMonthly(sovItems,monthlyProgress,byScope,allMonths){
-  // For each month, find the latest cumulative % entered up to that month
   return allMonths.map(mk=>{
     let actualTotal=0;
     sovItems.forEach(sov=>{
       const prog=monthlyProgress[sov.id]||{};
-      // Find the latest month entry <= mk
       const entries=Object.entries(prog).filter(([m])=>m<=mk).sort((a,b)=>b[0].localeCompare(a[0]));
       const latestPct=entries.length>0?entries[0][1]/100:0;
       actualTotal+=sov.scheduledValue*latestPct;
@@ -234,7 +231,6 @@ function computeVariances(sovItems,monthlyProgress,byScope,threshold=0.10){
     const prog=monthlyProgress[sov.id]||{};
     Object.entries(prog).forEach(([mk,pctVal])=>{
       const actualEarned=sov.scheduledValue*(pctVal/100);
-      // Find baseline planned % at this month
       const scopeFull=byScope[sov.id].full;
       const lastDayOfMonth=new Date(mk+"-01");lastDayOfMonth.setMonth(lastDayOfMonth.getMonth()+1);lastDayOfMonth.setDate(0);
       const lastDay=fmtDate(lastDayOfMonth);
@@ -260,13 +256,12 @@ function computeForecasts(sovItems,monthlyProgress,byScope){
     const prevEntry=entries[entries.length-2];
     const latestPct=latestEntry[1]/100;
     const prevPct=prevEntry[1]/100;
-    const monthsDiff=1; // assuming monthly entries
+    const monthsDiff=1;
     const burnRatePerMonth=(latestPct-prevPct)/monthsDiff;
     if(burnRatePerMonth<=0)return{sov,hasData:false,latestPct,note:"No progress this period"};
     const remainingPct=1-latestPct;
     const monthsToComplete=Math.ceil(remainingPct/burnRatePerMonth);
     const forecastCompleteMonth=addMonths(latestEntry[0],monthsToComplete);
-    // EAC: if current burn rate continues
     const plannedEnd=byScope[sov.id]?monthKey(byScope[sov.id].finishDate):null;
     const isLate=plannedEnd&&forecastCompleteMonth>plannedEnd;
     const isEarly=plannedEnd&&forecastCompleteMonth<plannedEnd;
@@ -425,7 +420,6 @@ function LinkManager({tasks,sovItems,linksMap,onLinksChange}){
 // ─── Monthly Progress Panel ───────────────────────────────────────────────────
 function MonthlyProgressPanel({sovItems,monthlyProgress,onUpdate,byScope,sovKeys}){
   const [selectedMonth,setSelectedMonth]=useState(today().slice(0,7));
-  // Get all available months from scope curves
   const availableMonths=useMemo(()=>{
     if(!sovKeys.length)return[];
     let min=null,max=null;
@@ -449,7 +443,6 @@ function MonthlyProgressPanel({sovItems,monthlyProgress,onUpdate,byScope,sovKeys
 
   function getPct(sovId){return monthlyProgress[sovId]?.[selectedMonth]??"";}
 
-  // Compute baseline % for selected month
   function getBaselinePct(sovId){
     if(!byScope[sovId])return 0;
     const full=byScope[sovId].full;
@@ -485,7 +478,6 @@ function MonthlyProgressPanel({sovItems,monthlyProgress,onUpdate,byScope,sovKeys
         </div>
       </div>
 
-      {/* Summary KPIs */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9,marginBottom:16}}>
         <Metric title="Earned Value" value={currency(totalEarned)} color={WB.green} sub={`${Math.round(contractTotal>0?totalEarned/contractTotal*100:0)}% complete`}/>
         <Metric title="Remaining" value={currency(contractTotal-totalEarned)} color={WB.orange}/>
@@ -541,7 +533,6 @@ function MonthlyProgressPanel({sovItems,monthlyProgress,onUpdate,byScope,sovKeys
 function ForecastPanel({forecasts,variances}){
   return(
     <div style={{display:"grid",gap:16}}>
-      {/* Variance alerts */}
       {variances.length>0&&(
         <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.yellowBorder}`,padding:18}}>
           <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 4px",color:WB.text}}>
@@ -575,7 +566,6 @@ function ForecastPanel({forecasts,variances}){
         </div>
       )}
 
-      {/* Forecast to complete */}
       <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:18,overflowX:"auto"}}>
         <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 4px",color:WB.text}}>
           <Icon.Forecast/> Forecast to Complete
@@ -645,7 +635,6 @@ function Dashboard({sovItems,allDates,byScope,sovKeys,monthlyProgress,contractTo
   const spi=plannedToDate>0?totalEarned/plannedToDate:0;
   const variance=totalEarned-plannedToDate;
 
-  // Build actual monthly cumulative for S-curve overlay
   const allMonths=useMemo(()=>{
     if(!sovKeys.length)return[];
     let min=null,max=null;
@@ -657,7 +646,6 @@ function Dashboard({sovItems,allDates,byScope,sovKeys,monthlyProgress,contractTo
 
   const actualMonthly=useMemo(()=>buildActualMonthly(sovItems,monthlyProgress,byScope,allMonths),[sovItems,monthlyProgress,byScope,allMonths]);
 
-  // Merge with allDates for S-curve chart
   const sCurveData=useMemo(()=>{
     return combinedZoom.sliced.map(d=>{
       const mk=d.date.slice(0,7);
@@ -693,7 +681,6 @@ function Dashboard({sovItems,allDates,byScope,sovKeys,monthlyProgress,contractTo
         <Metric title="SPI" value={spi?spi.toFixed(2):"—"} color={spi>=1?WB.green:spi>=0.9?WB.yellow:WB.red} sub={spi>=1?"On schedule":"Behind"}/>
       </div>
 
-      {/* Variance alert summary */}
       {variances.length>0&&(
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:WB.yellowBg,border:`1px solid ${WB.yellowBorder}`,borderRadius:9,fontSize:13}}>
           <Icon.Alert color={WB.yellow}/>
@@ -771,12 +758,12 @@ function Dashboard({sovItems,allDates,byScope,sovKeys,monthlyProgress,contractTo
 
 // ─── Subcontractor Module ─────────────────────────────────────────────────────
 function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,monthlyData,sovColorMap,selectedSub,onSelectSub}){
-  const [activeView,setActiveView]=useState("list"); // list | detail | add
+  const [activeView,setActiveView]=useState("list");
   const [newSub,setNewSub]=useState({name:"",trade:"",contractAmount:""});
   const [subFile,setSubFile]=useState("");
   const [importError,setImportError]=useState("");
 
-  // Parse subcontractor import Excel
+  // ── THE FIX: trim all column header keys before lookup ──
   function handleSubFile(file){
     setSubFile(file.name);setImportError("");
     const reader=new FileReader();
@@ -786,9 +773,10 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
         const ws=wb.Sheets[wb.SheetNames[0]];
         const raw=XLSX.utils.sheet_to_json(ws,{defval:""});
         const imported=raw.map((row,i)=>{
-          const name=String(row["Subcontractor"]||row["Name"]||row["Sub"]||"").trim();
-          const trade=String(row["Trade"]||row["Division"]||"").trim();
-          const amt=toMoney(row["Contract Amount"]||row["Amount"]||row["Value"]||0);
+          const trimmed=Object.fromEntries(Object.entries(row).map(([k,v])=>[k.trim(),v]));
+          const name=String(trimmed["Subcontractor"]||trimmed["Name"]||trimmed["Sub"]||"").trim();
+          const trade=String(trimmed["Trade"]||trimmed["Division"]||"").trim();
+          const amt=toMoney(trimmed["Contract Amount"]||trimmed["Amount"]||trimmed["Value"]||0);
           if(!name)return null;
           return{id:`sub-import-${Date.now()}-${i}`,name,trade,contractAmount:amt,sovIds:[],baselineLocked:false,monthlyProgress:{}};
         }).filter(Boolean);
@@ -833,12 +821,10 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
     }));
   }
 
-  // Build sub bell curve data from its SOV scopes
   function buildSubCurve(sub){
     if(!sub.sovIds.length)return{monthly:[],contractTotal:0};
     const subSovItems=sovItems.filter(s=>sub.sovIds.includes(s.id));
     const contractTotal=subSovItems.reduce((s,i)=>s+i.scheduledValue,0);
-    // Aggregate monthly data for this sub's scopes only
     const monthly=monthlyData.map(row=>{
       let total=0;
       subSovItems.forEach(sov=>{const key=sov.description.slice(0,18);total+=(row[key]||0);});
@@ -847,14 +833,12 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
     return{monthly,contractTotal};
   }
 
-  // Sub health: compare progress vs baseline
   function getSubHealth(sub){
     if(!sub.monthlyProgress||!Object.keys(sub.monthlyProgress).length)return"none";
     const todayMk=today().slice(0,7);
     const entries=Object.entries(sub.monthlyProgress).filter(([m])=>m<=todayMk).sort((a,b)=>b[0].localeCompare(a[0]));
     if(!entries.length)return"none";
     const latestPct=entries[0][1]/100;
-    // Rough baseline: how far through project duration are we
     const subSovItems=sovItems.filter(s=>sub.sovIds.includes(s.id));
     if(!subSovItems.length)return"none";
     const allScopes=subSovItems.map(s=>byScope[s.id]).filter(Boolean);
@@ -870,11 +854,9 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
 
   const SUB_COLORS=["#4a7c8e","#c8a96e","#5b8a6d","#c87d5b","#7b9eb8","#8e6e5b","#a8c4b8","#6b8a9e"];
 
-  // ── List view ──
   if(activeView==="list"&&!selectedSub){
     return(
       <div style={{display:"grid",gap:14}}>
-        {/* Header actions */}
         <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
           <button onClick={()=>setActiveView("add")}
             style={{padding:"8px 16px",background:WB.primary,border:"none",borderRadius:8,color:WB.text,fontSize:13,fontWeight:600,cursor:"pointer"}}>
@@ -888,12 +870,10 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
           {importError&&<span style={{fontSize:12,color:WB.red}}>⚠ {importError}</span>}
         </div>
 
-        {/* Import template hint */}
         <div style={{padding:"10px 14px",background:WB.card,borderRadius:9,border:`1px solid ${WB.border}`,fontSize:12,color:WB.textDim}}>
           📋 Excel import format: columns <strong style={{color:WB.textMuted}}>Subcontractor</strong>, <strong style={{color:WB.textMuted}}>Trade</strong>, <strong style={{color:WB.textMuted}}>Contract Amount</strong>
         </div>
 
-        {/* Sub cards */}
         {subcontractors.length===0?(
           <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:40,textAlign:"center"}}>
             <div style={{fontSize:32,marginBottom:8}}>👷</div>
@@ -948,7 +928,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
     );
   }
 
-  // ── Add sub form ──
   if(activeView==="add"){
     return(
       <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:24,maxWidth:500}}>
@@ -972,7 +951,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
     );
   }
 
-  // ── Detail view ──
   if(activeView==="detail"&&selectedSub){
     const sub=subcontractors.find(s=>s.id===selectedSub.id)||selectedSub;
     const subIdx=subcontractors.findIndex(s=>s.id===sub.id);
@@ -990,7 +968,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
 
     return(
       <div style={{display:"grid",gap:14}}>
-        {/* Back + header */}
         <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
           <button onClick={()=>{setActiveView("list");onSelectSub(null);}} style={{background:"none",border:"none",color:WB.primaryLight,cursor:"pointer",fontSize:13}}>← All Subs</button>
           <div style={{flex:1}}>
@@ -1004,7 +981,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
           </div>
         </div>
 
-        {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:9}}>
           <Metric title="Contract Amount" value={currency(sub.contractAmount||contractTotal)} color={col}/>
           <Metric title="SOV Scopes" value={sub.sovIds.length} color={col}/>
@@ -1012,7 +988,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
           <Metric title="Remaining" value={currency((sub.contractAmount||contractTotal)-totalEarned)} color={WB.orange}/>
         </div>
 
-        {/* Bell curve */}
         {monthly.length>0&&(
           <div style={{background:WB.card,borderRadius:13,border:`1px solid ${WB.border}`,padding:20}}>
             <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:700,margin:"0 0 14px",color:WB.text}}>{sub.name} — Monthly Spend Bell Curve</h3>
@@ -1031,7 +1006,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
           </div>
         )}
 
-        {/* Assign SOV scopes */}
         <div style={{background:WB.card,borderRadius:13,border:`1px solid ${WB.border}`,padding:20}}>
           <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:700,margin:"0 0 14px",color:WB.text}}>Assign SOV Scopes</h3>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
@@ -1054,7 +1028,6 @@ function SubcontractorModule({subcontractors,onUpdate,sovItems,byScope,sovKeys,m
           </div>
         </div>
 
-        {/* Monthly progress */}
         <div style={{background:WB.card,borderRadius:13,border:`1px solid ${WB.border}`,padding:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
             <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:700,margin:0,color:WB.text}}>Monthly Progress</h3>
@@ -1109,21 +1082,20 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
   const [scopeZooms,setScopeZooms]=useState({});
   const [scopeSels,setScopeSels]=useState({});
   const [baselineLocked,setBaselineLocked]=useState(false);
-  const [monthlyProgress,setMonthlyProgress]=useState({}); // {sovId: {month: pct}}
+  const [monthlyProgress,setMonthlyProgress]=useState({});
   const [mLeft,setMLeft]=useState(0);
   const [mRight,setMRight]=useState(null);
   const [mSel,setMSel]=useState(null);
   const [c1Left,setC1Left]=useState(0);
   const [c1Right,setC1Right]=useState(null);
   const [c1Sel,setC1Sel]=useState(null);
-  const [saveStatus,setSaveStatus]=useState(""); // "saved" | "restored" | ""
-  const [subcontractors,setSubcontractors]=useState([]); // [{id,name,trade,contractAmount,sovIds:[],baselineLocked,monthlyProgress:{}}]
+  const [saveStatus,setSaveStatus]=useState("");
+  const [subcontractors,setSubcontractors]=useState([]);
   const [selectedSub,setSelectedSub]=useState(null);
 
   const workTasks=useMemo(()=>rawTasks.filter(t=>!t.isSummary),[rawTasks]);
   const sovItems=sovResult?.items||[];
 
-  // ── Cloud save (Supabase) with localStorage fallback ─────────────────────
   useEffect(()=>{
     if(!rawTasks.length&&!sovItems.length)return;
     const state={rawTasks:rawTasks.map(t=>({...t,startDate:t.startDate?t.startDate.toISOString():null,finishDate:t.finishDate?t.finishDate.toISOString():null})),sovResult,schedFile,sovFile,linksMap,baselineLocked,monthlyProgress,subcontractors};
@@ -1135,7 +1107,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
     }
   },[rawTasks,sovResult,linksMap,baselineLocked,monthlyProgress]);
 
-  // ── Restore from cloud or localStorage ───────────────────────────────────
   useEffect(()=>{
     async function restore(){
       let state=null;
@@ -1160,7 +1131,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
     localStorage.removeItem(STORAGE_KEY);window.location.reload();
   }
 
-  // Auto fuzzy link
   useEffect(()=>{
     if(!workTasks.length||!sovItems.length||Object.keys(linksMap).length>0)return;
     setLinksMap(autoLink(workTasks,sovItems));
@@ -1193,11 +1163,9 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
     scopes:sovItems.length,plotted:sovKeys.length,linked:new Set(Object.values(linksMap).flat()).size,tasks:workTasks.length,
   }),[sovResult,sovItems,sovKeys,linksMap,workTasks,contractTotal]);
 
-  // Variance alerts and forecasts
   const variances=useMemo(()=>computeVariances(sovItems,monthlyProgress,byScope),[sovItems,monthlyProgress,byScope]);
   const forecasts=useMemo(()=>computeForecasts(sovItems,monthlyProgress,byScope),[sovItems,monthlyProgress,byScope]);
 
-  // All months for monthly progress
   const allMonths=useMemo(()=>{
     if(!sovKeys.length)return[];
     let min=null,max=null;
@@ -1245,7 +1213,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
       `}</style>
       <div style={{maxWidth:1400,margin:"0 auto"}}>
 
-        {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18,flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
             <img src="/Wright Brothers Logo.png" alt="Wright Brothers" style={{height:56,objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
@@ -1260,7 +1227,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
             </div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",alignSelf:"flex-end"}}>
-            {/* Save status */}
             {saveStatus==="saved"&&<span style={{fontSize:11,color:WB.green,display:"flex",alignItems:"center",gap:4}}><Icon.Check color={WB.green}/> Saved</span>}
             {saveStatus==="restored"&&<span style={{fontSize:11,color:WB.primaryLight,display:"flex",alignItems:"center",gap:4}}><Icon.Check color={WB.primaryLight}/> Session restored</span>}
             <button onClick={clearSave} style={{padding:"6px 12px",background:"transparent",border:`1px solid ${WB.border}`,borderRadius:8,color:WB.textDim,cursor:"pointer",fontSize:11}}>Clear Data</button>
@@ -1283,13 +1249,11 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           </div>
         </div>
 
-        {/* Uploads */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           <DropZone label="Upload MS Project XML" accept=".xml" onFile={handleScheduleFile} fileName={schedFile?`${schedFile} · ${workTasks.length} tasks`:""} icon={<Icon.File color={WB.primary}/>} hint="File → Save As → XML Format in MS Project"/>
           <DropZone label="Upload SOV Excel" accept=".xlsx,.xls,.csv" onFile={handleSOVFile} fileName={sovFile?`${sovFile} · ${sovItems.length} scopes`:""} icon={<Icon.Layers color={WB.green}/>} hint="GC/GR and OH&P auto-detected and distributed"/>
         </div>
 
-        {/* SOV info */}
         {sovResult&&(
           <div style={{display:"flex",gap:8,alignItems:"center",padding:"8px 12px",background:WB.card,border:`1px solid ${WB.border}`,borderRadius:8,marginBottom:12,fontSize:12,flexWrap:"wrap"}}>
             <Icon.Info color={WB.primary}/>
@@ -1302,7 +1266,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           </div>
         )}
 
-        {/* KPIs */}
         {(workTasks.length>0||sovItems.length>0)&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:9,marginBottom:14}}>
             <Metric title="Contract Total" value={currency(totals.contract)} color={WB.green}/>
@@ -1313,7 +1276,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           </div>
         )}
 
-        {/* Tabs */}
         <div style={{display:"flex",gap:2,marginBottom:14,background:WB.card,padding:3,borderRadius:10,border:`1px solid ${WB.border}`,width:"fit-content",flexWrap:"wrap"}}>
           {TABS.map(t=>(
             <button key={t.id} className="tab-btn" onClick={()=>setActiveTab(t.id)}
@@ -1324,13 +1286,11 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           ))}
         </div>
 
-        {/* ── Dashboard ── */}
         {activeTab==="dashboard"&&(
           hasData?<Dashboard sovItems={sovItems} allDates={allDates} byScope={byScope} sovKeys={sovKeys} monthlyProgress={monthlyProgress} contractTotal={contractTotal} combinedZoom={combinedZoom} variances={variances}/>
           :<Empty msg="Upload both files and link tasks to scopes to see the dashboard."/>
         )}
 
-        {/* ── Bell Curves ── */}
         {activeTab==="curves"&&(
           <div style={{display:"grid",gap:14}}>
             {!hasData&&<Empty msg="Upload both files and link tasks to generate bell curves."/>}
@@ -1403,13 +1363,11 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           </div>
         )}
 
-        {/* ── Monthly View ── */}
         {activeTab==="monthly"&&(
           <div style={{display:"grid",gap:14}}>
             {!hasData&&<Empty msg="Upload both files and link tasks to generate monthly projections."/>}
             {hasData&&(
               <>
-                {/* Chart 1: Combined + zoomable */}
                 {(()=>{
                   const c1Sliced=c1Right!==null?monthlyData.slice(c1Left,c1Right+1):monthlyData;
                   const c1Zoomed=c1Left>0||c1Right!==null;
@@ -1456,7 +1414,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
                   );
                 })()}
 
-                {/* Chart 2: Project total only */}
                 <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:20}}>
                   <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 4px",color:WB.text}}>② Project Total Bell Curve — Monthly</h2>
                   <p style={{color:WB.textDim,fontSize:12,marginBottom:14}}>Overarching project spend across all scopes combined, by month</p>
@@ -1478,7 +1435,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
                   </div>
                 </div>
 
-                {/* Chart 3: Individual scopes zoomed */}
                 {(()=>{
                   const sliced=mRight!==null?monthlyData.slice(mLeft,mRight+1):monthlyData;
                   const isZoomed=mLeft>0||mRight!==null;
@@ -1524,7 +1480,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
                   );
                 })()}
 
-                {/* Monthly totals table */}
                 <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:20,overflowX:"auto"}}>
                   <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 4px",color:WB.text}}>Monthly Subcontractor Totals</h2>
                   <p style={{color:WB.textDim,fontSize:12,marginBottom:14}}>Sum of all scope spend per month</p>
@@ -1555,26 +1510,22 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           </div>
         )}
 
-        {/* ── Forecast ── */}
         {activeTab==="forecast"&&(
           hasData?<ForecastPanel forecasts={forecasts} variances={variances}/>
           :<Empty msg="Upload both files, link scopes, and enter monthly progress to see forecasts."/>
         )}
 
-        {/* ── Progress ── */}
         {activeTab==="progress"&&(
           hasData?<MonthlyProgressPanel sovItems={sovItems} monthlyProgress={monthlyProgress} onUpdate={setMonthlyProgress} byScope={byScope} sovKeys={sovKeys}/>
           :<Empty msg="Upload both files and link scopes to enter progress updates."/>
         )}
 
-        {/* ── Link Tasks ── */}
         {activeTab==="links"&&(
           workTasks.length&&sovItems.length
             ?<LinkManager tasks={workTasks} sovItems={sovItems} linksMap={linksMap} onLinksChange={setLinksMap}/>
             :<div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:40,textAlign:"center"}}><div style={{fontSize:13,color:WB.textDim}}>Upload both files to use the link manager.</div></div>
         )}
 
-        {/* ── SOV Detail ── */}
         {activeTab==="sov"&&(
           <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:18,overflowX:"auto"}}>
             <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 4px",color:WB.text}}>SOV Line Items — Distributed Values</h2>
@@ -1591,8 +1542,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           </div>
         )}
 
-
-        {/* ── Subcontractors ── */}
         {activeTab==="subs"&&(
           <SubcontractorModule
             subcontractors={subcontractors}
@@ -1607,7 +1556,6 @@ export default function App({user=null,project=null,onBackToProjects=null,onSign
           />
         )}
 
-        {/* ── Validation ── */}
         {activeTab==="validation"&&(
           <div style={{background:WB.card,borderRadius:14,border:`1px solid ${WB.border}`,padding:18}}>
             <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:700,margin:"0 0 4px",color:WB.text}}>Validation Log</h2>
